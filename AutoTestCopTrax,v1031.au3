@@ -1,6 +1,9 @@
 #include <Constants.au3>
 #include <File.au3>
-;#RequireAdmin
+#include <ScreenCapture.au3>
+#include <Array.au3>
+#include <Timers.au3>
+#RequireAdmin
 ;
 ; Testing on CopTrax Version: 1.0
 ; Language:       AutoIt
@@ -13,12 +16,15 @@
 
 HotKeySet("{ESC}", "HotKeyPressed") ; ESC to trigger stop testing
 HotKeySet("+!r", "HotKeyPressed") ; Shift-Alt-r, to trigger testing on record function
+HotKeySet("+!e", "HotKeyPressed") ; Shift-Alt-e, to trigger testing on record function
 HotKeySet("+!s", "HotKeyPressed") ; Shift-Alt-s, to trigger testing on settings function
 HotKeySet("+!c", "HotKeyPressed") ; Shift-Alt-c, to trigger testing on camera switch function
 HotKeySet("+!p", "HotKeyPressed") ; Shift-Alt-p, to trigger testing on photo function
 HotKeySet("+!m", "HotKeyPressed") ; Shift-Alt-m, to trigger testing on mode function
 HotKeySet("+!w", "HotKeyPressed") ; Shift-Alt-w, to trigger testing on review function
 
+Global $rTimerID	; TimerID for record function
+Global $mRecord = 1000*5;
 ; Prompt the user to run the script - use a Yes/No prompt with the flag parameter set at 4 (see the help file for more details)
 Global $mMB = "CopTrax GUI Tester"
 Global $logFile = @MyDocumentsDir & "\CopTraxTesting\test" & @MON & @MDAY & ".log"
@@ -43,15 +49,15 @@ EndIf
 Global $mCopTrax = WinWaitActive($mClassName, "", 5)
 ; Retrieve the handle of the CopTrax window using the classname or Title.
 
-Local $iAnswer = MsgBox($MB_OK, $mMB, "Gears are all ready. Testing start..." & $logFile & @CRLF & "Esc to quit" )
+Local $iAnswer = MsgBox($MB_OK, $mMB, "Gears are all ready. Testing start..." & $logFile & @CRLF & "Esc to quit", 2)
 
 Global $testEnd = False
 Global $hTimer = TimerInit()	; Begin the timer and store the handler
 While Not $testEnd
    Sleep(100)
    Local $fDiff = TimerDiff($hTimer)
-   If $fDiff > 1000*5 Then
-	  logCPUMemory()		; log the CPU and memory usage every minutes
+   If $fDiff > 1000*60 Then
+	  logCPUMemory()		; log the CPU and memory usage every minute
 	  $hTimer = TimerInit()	; reset the timer
    EndIf
 WEnd
@@ -61,55 +67,6 @@ MsgBox($MB_OK, $mMB, "Testing ends. Bye.",2)
 
 ; Finished!
 
-Func stopCopTraxSAV()
-   prepareTest()
-
-   MsgBox($MB_OK, $mMB, "Testing Ends",2)
-
-   MouseClick("",960,560)	; click the Info button
-   Sleep(400)
-
-   Local $mTitle = "Menu Action"
-   WinActivate($mTitle)
-   Local $mHandle = WinWaitActive($mTitle,"",2)
-   If  $mHandle = 0 Then
-	  Local $mWinClassList = WinGetClassList($mCopTrax)
-	  MsgBox($MB_OK, "Test Alert", "Cannot trigger the Info function in CopTrax. " & @CRLF & $mWinClassList,2)
-	  Exit
-   EndIf
-
-   ControlClick($mHandle,"","WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad11",'left')	; click the title
-   Sleep(100)
-
-   ;MouseClick("",450,82)
-   ;Sleep(200)
-   ;MouseDown($MOUSE_CLICK_LEFT)
-
-   ControlClick($mHandle,"","WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad11")
-   AutoItSetOption("SendKeyDelay", 100)
-   Send("{DOWN 8}{ENTER}")
-
-   Sleep(100);
-   MouseMove(450,250)
-   MouseDown($MOUSE_CLICK_LEFT)
-   Sleep(400)
-
-   $mTitle = "Login"
-   If  WinWaitActive($mTitle,"",2) = 0 Then
-	  Local $mWinClassList = WinGetClassList($mCopTrax)
-	  MsgBox($MB_OK, "Test Alert", "Cannot trigger the Admin password input. " & @CRLF & $mWinClassList,2)
-	  Exit
-   EndIf
-
-   Sleep(100);
-   MouseClick($MOUSE_CLICK_LEFT,590,100)
-   Sleep(100);
-   Send("135799{ENTER}")
-
-   ;ControlCommand($mTitle,"","WindowsForms10.EDIT.app.0.182b0e9_r11_ad11","135799{ENTER}")
-
-EndFunc
-
 Func stopCopTrax()
    prepareTest()
 
@@ -117,7 +74,6 @@ Func stopCopTrax()
    Sleep(400)
 
    $testEnd = True	;	Stop testing marker
-   Exit
 
    Local $mTitle = "Menu Action"
    If WinWaitActive($mTitle,"",2) = 0 Then
@@ -126,12 +82,15 @@ Func stopCopTrax()
 	  logWrite("Click to info button failed.")
 	  Exit
    EndIf
-
-   MouseClick("", 450, 80)	; click the About
    Sleep(100)
-   Send("{DOWN 8}{ENTER}{TAB}{ENTER}")	; choose the Administrator
 
-   Sleep(100)
+;   MouseClick("", 450, 80)	; click the About
+   ControlClick($mTitle,"","[CLASS:WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad1; INSTANCE:1]")
+   Sleep(500)
+   Send("{DOWN 8}{ENTER}")	; choose the Administrator
+   ControlClick($mTitle,"","Apply")
+
+   Sleep(500)
    Local $mTitle = "Login"
    If WinWaitActive($mTitle,"",2) = 0 Then
 	  Local $mWinClassList = WinGetClassList($mCopTrax)
@@ -142,8 +101,6 @@ Func stopCopTrax()
 
    Send("135799{ENTER}")	; type the administator password
    ;ControlCommand($mTitle,"","WindowsForms10.EDIT.app.0.182b0e9_r11_ad11","135799{ENTER}")
-
-   $testEnd = True;
 EndFunc
 
    ; Now select Admin by send DOWN key 10 times and then ENTER key
@@ -151,103 +108,130 @@ EndFunc
 Func testRecord()
    prepareTest()
 
-   Local $i;
-
-   For $i=1 To 1000
-	  testR($i)
-   Next
-EndFunc
-
-Func testR($n)
-   ConsoleWrite("Begin the test of record function. #" & $n & " at " & @HOUR & ":" & @MIN & ", " & @MON & " / " & @MDAY & @CRLF)
+   logWrite("Start Record function testing.")
 
    Local $mHandle = WinActivate($mCopTrax);
 
    If ControlClick($mCopTrax,"","WindowsForms10.Window.8.app.0.182b0e9_r11_ad14") = 0 Then
-	  MsgBox($MB_OK,"Test elert", " Click on the main tool bar failed.",2)
-	  ConsoleWriteError("Click to start record failed at " & @HOUR & ":" & @MIN & ", " & @MON & " / " & @MDAY & @CRLF)
+	  MsgBox($MB_OK, $mMB, "Click on the main tool bar failed.",2)
+	  logWrite("Click to start record failed.")
    EndIf
 
    Sleep(100)
    MouseClick("", 960, 80)	; click to start record
 
    Sleep(10000)	; Wait for 10sec for record begin recording
-   If Not checkFile() Then	; check if the specified files appear or not
-	  ConsoleWriteError("Recording failed to start at " & @HOUR & ":" & @MIN & ", " & @MON & " / " & @MDAY & @CRLF)
+   If checkFile() Then	; check if the specified files appear or not
+	  logWrite("Recording start successfully.")
+	  logCPUMemory()
+   Else
+	  logWrite("Recording failed to start.")
 	  Exit
    EndIf
+EndFunc
 
-   MouseClick("", 960, 80)	; click again to stop record
+Func _endRecord()
+   prepareTest()
+
+   logCPUMemory()
+   logWrite("Stop record function testing.")
+   MouseClick("", 960, 80,2)	; click again to stop record
 
    Local $mTitle = "Report Taken"
    If WinWaitActive($mTitle,"",2) = 0 Then
-	  Local $mWinClassList = WinGetClassList($mCopTrax)
-	  MsgBox($MB_OK, "Test Alert", "Cannot trigger the record function in CopTrax. " & @CRLF & $mHandle,2)
-	  ConsoleWriteError("Click to stop record failed at " & @HOUR & ":" & @MIN & ", " & @MON & " / " & @MDAY & @CRLF)
+	  MsgBox($MB_OK,  $mMB, "Cannot trigger the end record function",2)
+	  logWrite("Click to stop record failed ")
 	  Exit
    EndIf
 
    Sleep(200)
 
-   MouseClick("", 475,60)
-   ControlFocus($mTitle,"",5114438)
-   AutoItSetOption("SendKeyDelay", 100)
-   Send("N")
-   MouseClick($MOUSE_CLICK_LEFT, 475,60)
+   ControlClick($mTitle,"","[CLASS:WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad1; INSTANCE:2]")
+   AutoItSetOption("SendKeyDelay", 200)
+   Send("{DOWN 3}{ENTER}")
    Sleep(100)
 
-   ; move the mouse to Operating User InputBox
-   MouseClick($MOUSE_CLICK_LEFT, 475,130)
-   Send("jj")
-   MouseClick($MOUSE_CLICK_LEFT, 475,130)
+   ControlClick($mTitle,"","[CLASS:WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad1; INSTANCE:1]")
+   Send("jj{ENTER}")
    Sleep(100)
 
-   ; move the mouse to Comments InputBox
-   MouseClick($MOUSE_CLICK_LEFT, 475,250)
-   ; AutoItSetOption("SendKeyDelay", 100)
+   ControlClick($mTitle,"","[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:1]")
    Send("This is a test input by CopTrax testing team.")
    Sleep(100)
 
-   ;Click the OK button
-   MouseClick("",500,330)
+   ControlClick($mTitle,"","[CLASS:WindowsForms10.BUTTON.app.0.182b0e9_r11_ad1; INSTANCE:1]")
+   Sleep(100)
+
+   If WinWaitClose($mTitle,"",2) = 0 Then
+	  MsgBox($MB_OK,  $mMB, "Click on the OK button failed",2)
+	  logWrite("Click on the OK button to stop record failed ")
+	  Exit
+   EndIf
+
 EndFunc
 
 Func testSettings()
    prepareTest()
-
-   MouseClick(960, 460);
+   MouseClick("",960, 460)
 
    Local $mTitle = "CopTrax II Setup"
    Local $hWnd = WinWaitActive($mTitle,"",10)
-   MsgBox($MB_OK,"CopTrax Automate Testor", " Testing settings input..",2)
-   Sleep(200)
+      If WinWaitActive($mTitle,"",2) = 0 Then
+	  MsgBox($MB_OK,  $mMB, "Cannot trigger the settings function.",2)
+	  logWrite("Click to trigger the settings function failed ")
+	  Exit
+   EndIf
 
-   ControlClick($hWnd,"",4065668)
+   ControlClick($hWnd,"","Test")
+   Sleep(3000)
 
-   ;MouseClick($MOUSE_CLICK_LEFT, 900,470)
+   MouseClick("", 60, 120) ;"Hardware Triggers")
    Sleep(2000)
 
-   ;MouseClick($MOUSE_CLICK_LEFT, 950,560)
-   ControlClick($mTitle,"",2951158)
+   MouseClick("", 60, 180) ;"Speed Triggers")
+   Sleep(2000)
+
+   MouseClick("", 60, 240) ;"GPS & Radar")
+   Sleep(200)
+
+   MouseClick("", 930, 295) ;"Test")
+   Sleep(2000)
+
+   MouseClick("", 60, 300) ;"Security")
+   Sleep(2000)
+
+   MouseClick("", 60, 360) ;"Upload & Storage")
+   Sleep(2000)
+
+   MouseClick("", 60, 420) ;"Misc")
+   Sleep(2000)
+
+   MouseClick("", 60, 60) ;"Cameras")
+   Sleep(2000)
+
+   ControlClick($mTitle,"","Cancel")
    Sleep(400)
+
+   If WinWaitClose($mTitle,"",2) = 0 Then
+	  MsgBox($MB_OK,  $mMB, "Click on the Cancel button failed",2)
+	  logWrite("Click on the Cancel button to quit settings failed ")
+	  Exit
+   EndIf
 EndFunc
 
 Func prepareTest()
-   Local $hWnd = WinExists("Login")
-   If $hWnd Then
-	  WinClose($hWnd)
+   If  WinExists("Login") Then
+	  WinClose("Login")
 	  Sleep(100)
    EndIf
 
-   $hWnd = WinExists("Menu Action")
-   If $hWnd Then
-	  WinClose($hWnd)
+   If WinExists("Menu Action") Then
+	  WinClose("Menu Action")
 	  Sleep(100)
    EndIf
 
-   $hWnd = WinExists("Report Taken")
-   If $hWnd Then
-	  WinClose($hWnd)
+   If WinExists("Report Taken") Then
+	  WinClose("Report Taken")
 	  Sleep(100)
    EndIf
 
@@ -260,26 +244,69 @@ Func prepareTest()
 	  MsgBox($MB_SYSTEMMODAL, $mMB,"Current active window ontop is " & $mTitle)
 	  logWrite("Prepare testing Error. The active window ontop is " & $mTitle)
    EndIf
-
-   MouseMove(960,200)
-   ControlEnable($mCopTrax,"","WindowsForms10.Window.8.app.0.182b0e9_r11_ad14")
-   Sleep(100)
 EndFunc
 
 Func testCamera()
    logWrite("Begin Camera function testing.")
+
+   prepareTest()
+
+   MouseClick("",960,170)
+   Sleep(1000)
+
+   Local $hBMP = _ScreenCapture_Capture("")
+   Local $screenFile = @MyDocumentsDir & "\CopTraxTesting\camera" & @MON & @MDAY & @HOUR & @MIN & ".jpg"
+   _ScreenCapture_SaveImage($screenFile,$hBMP)
+   logWrite("The camera Switched. The screen capture is saved as " & $screenFile);
 EndFunc
 
 Func testPhoto()
+   prepareTest()
+
    logWrite("Begin Photo function testing.")
+
+   MouseClick("", 960, 350);
+
+   Local $hWnd = WinWaitActive("Information", "", 5)
+   Sleep(1000)
+   ControlClick($hWnd,"","OK")
+   Sleep(200)
+
+   If WinWaitClose($hWnd,"",2) = 0 Then
+	  MsgBox($MB_OK, $mMB, "Clickon the OK button to close the Photo failed.",2)
+	  logWrite("Click on the OK button to quit Photo taking failed.")
+	  Exit
+   EndIf
 EndFunc
 
 Func testReview()
+   prepareTest()
    logWrite("Begin Review function testing.")
+
+   MouseClick("", 960, 260);
+   Local $hWnd = WinWaitActive("CopTrax | Video Playback", "", 5)
+   Sleep(5000)
+   WinClose($hWnd)
+   Sleep(200)
+
+   If WinWaitClose($hWnd,"",2) = 0 Then
+	  MsgBox($MB_OK, $mMB, "Click to close the playback window failed.",2)
+	  logWrite("Click to close the playback review function failed.")
+	  Exit
+   EndIf
 EndFunc
 
 Func logWrite($s)
    _FileWriteLog($logFile,$s)
+EndFunc
+
+Func checkFile()
+   local $aFileList = _FileListToArray(@MyDocumentsDir & "\CopTraxTemp","Rec_*.mp4", Default, True)
+   If @error = 4 Then
+	  Return False
+   EndIf
+
+   Return $aFileList[0] >= 1
 EndFunc
 
 Func HotKeyPressed()
@@ -291,6 +318,10 @@ Func HotKeyPressed()
         Case "+!r" ; String is the Shift-Alt-r hotkey. to testing the record function
             MsgBox($MB_OK, $mMB, "Testing the record function",2)
 			testRecord()
+
+        Case "+!e" ; String is the Shift-Alt-r hotkey. to testing the record function
+            MsgBox($MB_OK, $mMB, "Testing the end record function",2)
+			_endRecord()
 
         Case "+!s" ; String is the Shift-Alt-s hotkey. to testing the record function
             MsgBox($MB_OK, $mMB, "Testing the settings function",2)
@@ -305,7 +336,7 @@ Func HotKeyPressed()
 			testPhoto()
 
         Case "+!w" ; String is the Shift-Alt-w hotkey. to testing the review function
-            MsgBox($MB_OK, $mMB, "Testing the photo function",2)
+            MsgBox($MB_OK, $mMB, "Testing the review function",2)
 			testReview()
 
     EndSwitch

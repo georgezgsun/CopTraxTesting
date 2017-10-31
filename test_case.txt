@@ -1,0 +1,12 @@
+; Sample test case
+; the supported test command are record, camera, review, photo, settings
+; Each line contains a single command
+; record command may follow upto two numbers, the first indicates how many minutes you want to record, the second indicates how many repeat time you want to test
+; for example, record 20 50 means run the record for 50 times and each time record for 20 minutes
+camera
+review
+camera
+photo
+settings
+record 1 10
+record 20 10
