@@ -1,3 +1,8 @@
+#Region ;**** Directives created by AutoIt3Wrapper_GUI ****
+#AutoIt3Wrapper_Res_Description=Automation test server
+#AutoIt3Wrapper_Res_Fileversion=2.11.20.5
+#AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
+#EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 ;
 ; Test Server for CopTrax
 ; Version: 1.0
@@ -16,9 +21,13 @@
 #include <Constants.au3>
 #include <Timers.au3>
 #include <File.au3>
+#include <Date.au3>
+#include <GUIConstantsEx.au3>
+#include <WindowsConstants.au3>
+
+HotKeySet("{Esc}", "HotKeyPressed") ; Esc to stop testing
 
 Global Const $max_connections = 10	; define the max client numbers
-Global $testCommands = ""	; globally store the commands in test case
 Local $ipServer = @IPAddress1
 Local $port = 16869
 Global $workDir = "C:\CopTraxTest\"
@@ -28,29 +37,51 @@ OnAutoItExitRegister("OnAutoItExit")	; Register OnAutoItExit to be called when t
 Global $TCPListen = TCPListen ($ipServer, $port, $max_connections)
 
 Local $testCaseFile = $workDir & "test_case.txt"
-readTestCase($testCaseFile);
+Global $testCommands = "hold " & readTestCase($testCaseFile); globally store the commands in test case
 
 MsgBox($MB_OK, "CopTrax Remote Test Server", "The test cases shall be in " & $testCaseFile & @CRLF & "The server is " & $ipServer & ":" & $port, 5)
 
-If $testCommands = "" Then
-   MsgBox($MB_OK, "CopTrax Remote Server", "Cannot read " & $testCaseFile & ".",5)
-   TCPShutdown() ; Close the TCP service.
-   Exit
-Else
-   ConsoleWrite("Test case is: " & $testCommands & @CRLF)
-EndIf
-
-
-Dim $Sockets[$max_connections + 1], $logFiles[$max_connections + 1], $commands[$max_connections + 1]
+Dim $Sockets[$max_connections + 1], $logFiles[$max_connections + 3], $commands[$max_connections + 1]
 Dim $commandTimers[$max_connections + 1], $connectionTimers[$max_connections + 1], $transFiles[$max_connections + 1]
+Dim $byteCounter[$max_connections + 1], $fileToBeSent[$max_connections + 1], $heartBeatTimers[$max_connections + 1]
+Dim $hGUI[$max_connections + 3], $gGUI[$max_connections + 3]
+Dim $offsetX[$max_connections + 3], $offsetY[$max_connections + 3]
+Dim $testRslt[$max_connections + 1], $boxID[$max_connections + 1]
 
 Local $i
 For $i = 0 To $max_connections
-   $Sockets[$i] = 0
+   $Sockets[$i] = 0	; Stores the sockets for each client
 Next
 
+For $i = 1 To 4
+   Local $x = ($i - 1 - Floor(($i-1)/4)*3) * 480
+   $offsetX[$i] = $x
+   $offsetY[$i] = 0
+   $offsetX[$i+5] = $x
+   $offsetY[$i+5] = 360*2
+Next
+$offsetX[5] = $offsetX[1]
+$offsetY[5] = 360
+$offsetX[6] = $offsetX[4]
+$offsetY[6] = 360
+$offsetX[11] = $offsetX[2]
+$offsetY[11] = 360
+$offsetX[12] = $offsetX[3]
+$offsetY[12] = 360			; arrage the 12 windows in the right places
+
+; the window 11 will display the main test result
+$hGUI[11] = GUICreate("Server " & $ipServer & ":" & $port, 480,360)
+$gGUI[11] = GUICtrlCreateEdit("", 2, 2, 475, 355, $WS_VSCROLL)
+GUICtrlSetFont($gGUI[11], 9, 400, 0, "Courier New")
+GUISetState(@SW_SHOW)
+WinMove($hGUI[11], "", $offsetX[11], $offsetY[11])
+$logFiles[11] =FileOpen($workDir & "log\automationtest.log", 1+8) 	; Clear the client name for future updating from the client
+
 Global $hTimer = TimerInit()	; global timer handle
-While 1
+Global $leakMsg = ""
+Global $testEnd = False
+
+While Not $testEnd
    _Accept_Connection()	; accept new client's connection requist
 
    Local $i, $Recv
@@ -59,16 +90,24 @@ While 1
 	  If $Sockets[$i] <> 0 Then
 		 $Recv = TCPRecv($Sockets[$i],1000000)
 		 If $Recv <> "" Then
-			processMsg($i, $Recv)
-			$connectionTimers[$i] = $currentTime + 2000*60 ; renew the hear_rate check timer
+			processReply($i, $leakMsg & $Recv)
+			$connectionTimers[$i] = $currentTime + 2000*60 ; renew the heart-beat check timer
 		 EndIf
 
 		 If $currentTime > $commandTimers[$i] Then	; check if it is time for next command
-			nextTestCommand($i)	; get the new test command executed, the new timer is set in it
+			parseCommand($i)	; get the new test command executed, the new timer is set in it
+		 EndIf
+
+		 If ($currentTime > $heartBeatTimers[$i]) And ($currentTime < $commandTimers[$i] - 50) Then ; check the heart-beat timer
+			sendCommand($i, "status")	; send a command for heart_beat
+			pushCommand($i, "hold")	; hold any new command from executing only after get a continue response from the client
+			$heartBeatTimers[$i] = $currentTime + 60*1000;
+			logWrite($i, "(Server) Send status command to client.")
 		 EndIf
 
 		 If $currentTime > $connectionTimers[$i] Then	; test if the client is alive
 			logWrite($i, "(Server) Connection to client lost.")
+			logWrite(11, $boxID[$i] & " connection lost.")
 			closeConnection($i)
 		 EndIf
 	  EndIf
@@ -76,204 +115,333 @@ While 1
    Sleep (100)
  WEnd
 
+OnAutoItExit()
+
 Exit
 
 Func closeConnection($n)
    TCPCloseSocket($Sockets[$n])	; Close the TCP connection to the client
    $Sockets[$n] = 0	; clear the soket index
    $Sockets[0] -= 1 ; reduce the total number of connection
+   Local $s = "==================================="
+   $s &= $s & $s
+   logWrite($n, $s)
+   logWrite($n, " ")
    FileClose($logFiles[$n])	; Close the log file
+   GUIDelete($hGUI[$n])
 EndFunc
 
-Func nextTestCommand($n)
-   Local $newCommand = StringSplit(StringLower($commands[$n]), " ")
-   Local $lengthCommand, $restCommand
+Func parseCommand($n)
+   Local $newCommand = popCommand($n)
 
-   If $newCommand[0] = 0 Then 	; no command left to be precessed
+   If $newCommand = "" Then 	; no command left to be precessed
 	  logWrite($n, "All tests passed.")
+	  logWrite(11, $boxID[$n] & " all tests passed.")
 	  closeConnection($n)
 	  Return
    EndIf
 
    Local $currentTime = TimerDiff($hTimer)
-   $commandTimers[$n] =  $currentTime + 1000;
-   ;$connectionTimers[$n] = $currentTime + 2000*60	; reset the time out to be in next 2mins
-   Switch $newCommand[1]	; process the new command
-	  Case "record"
-		 Local $min = int($newCommand[2])
-		 Local $nn = int($newCommand[3])
+   $commandTimers[$n] =  $currentTime + 10*1000 ; time for next command to be executed
 
-		 $lengthCommand = StringLen($newCommand[1] & " " & $newCommand[2] & " " & $newCommand[3] & " ")
-		 $restCommand = StringTrimLeft($commands[$n],$lengthCommand)
-		 TCPSend($Sockets[$n], $newCommand[1])	; send new test command to client
+	Local $nn, $mm
+	Switch $newCommand	; process the new command
+		Case "record"
+			sendCommand($n, $newCommand)	; send new test command to client
 
-		 if $nn > 1 Then
-			$nn -= 1;
-			$newCommand[3] = $nn
-			$commands[$n] = "hold endrecord " & $newCommand[1] & " " & $newCommand[2] & " " & $newCommand[3] & " " & $restCommand
-		 Else
-			$commands[$n] = "hold " & $restCommand	; hold any new command from execting only after get a continue response from the client
-		 EndIf
-		 $commandTimers[$n] += $min * 60*1000;	; set the next command timer xx minutes later
-		 logWrite($n, "(Server) Sent " & $newCommand[1] & " command to client. The stop record command will be sent in " & $min & " mins.")
+			$mm = int(popCommand($n))
+			$nn = int(popCommand($n))
+			If $nn > 1 Then
+				$nn -= 1;
+				pushCommand($n, "hold endrecord " & $newCommand & " " & $mm & " " & $nn)
+			Else
+				pushCommand($n, "hold endrecord")	; hold any new command from executing only after get a continue response from the client
+			EndIf
+			$commandTimers[$n] += $mm * 60*1000	; set the next command timer xx minutes later
+			logWrite($n, "(Server) Sent " & $newCommand & " command to client. The stop record command will be sent in " & $mm & " mins.")
 
-	  Case "endrecord"
-		 $lengthCommand = StringLen($newCommand[1] & " ")
-		 $restCommand = StringTrimLeft($commands[$n],$lengthCommand)
-		 TCPSend($Sockets[$n], $newCommand[1])	; send new test command to client
-		 $commands[$n]= "hold " & $restCommand 	; hold any new command from execting only after get a continue response from the client
-		 $commandTimers[$n] +=  60 * 1000;	; set the next command timer 1 min later
-		 logWrite($n, "(Server) Sent " & $newCommand[1] & " command to client.")
-		 ConsoleWrite($commands[$n] & @CRLF)
+		Case "endrecord"
+			sendCommand($n, $newCommand)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			$commandTimers[$n] +=  10 * 60 * 1000	; set the next command timer 10 mins later
+			logWrite($n, "(Server) Sent " & $newCommand & " command to client. Pause for 10 mins till next command.")
 
-	  Case "camera", "review", "photo", "info", "status"
-		 $lengthCommand = StringLen($newCommand[1] & " ")
-		 $restCommand = StringTrimLeft($commands[$n],$lengthCommand)
-		 TCPSend($Sockets[$n], $newCommand[1])	; send new test command to client
-		 logWrite($n, "(Server) Sent " & $newCommand[1] & " command to client.")
-		 $commands[$n] = "hold " & $restCommand 	; hold any new command from execting only after get a continue response from the client
-		 $commandTimers[$n] += 5 * 1000;	; set the next command timer 10s later
+		Case "settings", "login"
+			$mm = popCommand($n)
+			$nn = popCommand($n)
+			sendCommand($n, $newCommand & " " & $mm & " " & $nn)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			logWrite($n, "(Server) Sent " & $newCommand & " " & $mm & " " & $nn & " command to client.")
+			$commandTimers[$n] += 10*1000	; add 10 more seconds for upload function to be activiate
 
-	  Case "settings"
-		 $lengthCommand = StringLen($newCommand[1] & " ")
-		 $restCommand = StringTrimLeft($commands[$n],$lengthCommand)
-		 TCPSend($Sockets[$n], $newCommand[1])	; send new test command to client
-		 $commands[$n] = "hold " & $restCommand 	; hold any new command from execting only after get a continue response from the client
-		 $commandTimers[$n] += 30 * 1000;	; set the next command timer half min later
-		 logWrite($n, "(Server) Sent " & $newCommand[1] & " command to client.")
+		Case "camera"
+			$nn = popCommand($n)
+			sendCommand($n, $newCommand & " " & $nn)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			logWrite($n, "(Server) Sent " & $newCommand & " " & $nn & " command to client.")
+			$commandTimers[$n] += 10*1000	; add 10 more seconds for upload function to be activiate
 
-	  Case "upload", "update"
-		 $lengthCommand = StringLen($newCommand[1] & " " & $newCommand[2] & " ")
-		 $restCommand = StringTrimLeft($commands[$n],$lengthCommand)
-		 TCPSend($Sockets[$n], $newCommand[1] & " " & $newCommand[2])	; send upload command to client
-		 $commands[$n] = "hold " & $restCommand 	; hold any new command from execting only after get a continue response from the client
-		 $commandTimers[$n] += 30 * 1000;	set the next command timer half min later
-		 logWrite($n, "(Server) Sent " & $newCommand[1] & " " & $newCommand[2] & " command to client.")
+		Case "pause"
+			$nn = popCommand($n)
+			$commandTimers[$n] +=  Int($nn) * 60 * 1000	; set the next command timer $nn mins later
+			logWrite($n, "(Server) Pause for " & $nn & " minutes.")
 
-		 If $newCommand[1] = "upload" Then
-			transFiles[$n] = $workDir & "log\" & $newCommand[2]	; save the received files in log sub-folders
-			FileOpen($transFiles[$n],16+1)	; open file for append write and in binary mode
-		 ElseIf
-			update($n, $newCommand[2])
-		 EndIf
+		Case "review", "photo", "info", "status", "eof", "checkrecord", "restart", "radar", "quit", "stopapp", "runapp"
+			sendCommand($n, $newCommand)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			logWrite($n, "(Server) Sent " & $newCommand & " command to client.")
+
+		Case "synctime"
+			$nn = @YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC
+			sendCommand($n, $newCommand & " " & $nn)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			logWrite($n, "(Server) Sent " & $newCommand & " " & $nn & " command to client.")
+
+		Case "synctmz"
+			$nn = popCommand($n)
+			sendCommand($n, $newCommand & " " & $nn)	; send new test command to client
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+			logWrite($n, "(Server) Sent " & $newCommand & " " & $nn & " command to client.")
+
+		Case "upload"
+			Local $fileName = popCommand($n)
+			$newCommand &= " " & $fileName
+			sendCommand($n, $newCommand)	; send new test command to client
+			logWrite($n, "(Server) Sent " & $newCommand & " command to client.")
+			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
+
+		Case "update"
+			Local $fileName = popCommand($n)
+			Local $netFileName = StringSplit($fileName, "\")
+			Local $sourceFileName = $workDir & "latest\" & $netFileName[$netFileName[0]]	; all file need to be update shall sit in \latest folder
+			Local $file = FileOpen($sourceFileName,16)	; open file for read only in binary mode
+			$fileToBeSent[$n] = FileRead($file)
+			FileClose($file)
+			$newCommand &= " " & $fileName & " " & StringLen($fileToBeSent[$n])
+			sendCommand($n, $newCommand)	; send new test command to client
+			logWrite($n, "(Server) Sent " & $newCommand & " command to client.")
+			logWrite($n, "(Server) Sending " & $sourceFileName & " in server to update " & $fileName & " in client.")
+			pushCommand($n, "hold send hold")	; hold any new command from executing only after get a continue response from the client
+
+		Case "send"
+			sendCommand($n, $fileToBeSent[$n])	; send file to client
+			logWrite($n,"(Server) File sent to client.")
+
+		Case "hold"
+			pushCommand($n, "hold")	; the hold command can only be released by receive a contiue reply from the client
 
    EndSwitch
-   ;ConsoleWrite($commands[$n] & @CRLF)
+;   logWrite($n, "Remains test commands: " & $commands[$n])
 EndFunc
 
 Func logWrite($n,$s)
-   _FileWriteLog($logFiles[$n],$s)
+   If $n <= $max_connections+1 Then _FileWriteLog($logFiles[$n],$s)
+   GUICtrlSetData($gGui[$n], $s & @crlf, 1)
 EndFunc
 
 Func readTestCase($fileName)
    Local $testFile = FileOpen($fileName,0)	; for test case reading, readonly
    Local $fileEnds = False
-   Local $aLine
+   Local $aLine, $commands
    Do
 	  $aLine = StringSplit(StringLower(FileReadLine($testFile)), " ")
 
 	  Switch $aLine[1]
-		 Case "record"
-			Local $min, $n
-			if $aLine[0] < 2 Then
-			   $min = 5
-			   $n = 1
-			ElseIf $aLine[0] < 3 Then
-			   $n = 1
-			   $min = int($aLine[2])
+		 Case "record", "settings", "login"
+	  		Local $m, $n
+			If $aLine[0] < 2 Then
+			   $m = "1"
 			Else
-			   $min = int($aLine[2])
-			   $n = int($aLine[3])
+			   $m = StringLeft($aLine[2],5)
 			EndIf
 
-			If $min < 1 Then
-			   $min = 1
+			If $aLine[0] < 3 Then
+			   $n = "1"
+			Else
+			   $n = StringLeft($aLine[3],8)
 			EndIf
 
-			If $min > 120 Then
-			   $min = 120
-			EndIf
+			$commands &= $aLine[1] & " " & $m & " " & $n & " "
 
-			If $n < 0 Then
-			   $n = 1
+		 Case "camera", "upload", "update", "synctmz"
+	  		Local $m
+			If $aLine[0] < 2 Then
+			   $m = "1"
+			Else
+			   $m = $aLine[2]
 			EndIf
+			$commands &= $aLine[1] & " " & $m & " "
 
-			If $n > 10000 Then
-			   $n = 10000
-			EndIf
-
-			$testCommands &= "record " & $min & " " & $n & " "
-		 Case "camera", "review", "review ", "photo", "settings", "info", "upload", "status", "update"
-			$testCommands &= $aLine[1] & " "
+		 Case "review", "photo", "settings", "info", "status", "checkrecord", "restart", "stopapp", "radar", "quit", "runapp", "synctime"
+			$commands &= $aLine[1] & " "
 		 EndSwitch
    Until $aLine[1] = ""
 
    FileClose($testFile)
+   Return $commands
 EndFunc
 
-Func processMsg($n, $result)
-   Local $msg = StringSplit(StringLower($result), " ")
-   If $logFiles[$n] = "" Then
-	  Local $filename = $workDir & "log\" & $msg[1] & ".log"
-	  $logFiles[$n] = FileOpen($filename, 1)
-	  $commandTimer = TimerDiff($hTimer) + 1000;
+Func processReply($n, $reply)
+   Local $msg = StringSplit($reply, " ")
+   Local $len
+   If $transFiles[$n] <> "" Then	; This indicates the coming message shall be saved in file
+	  FileWrite($transFiles[$n], $reply)
+	  $len = StringLen($reply)
+	  logWrite($n, "(Server) Received " & $len & " bytes, write them to file.")
+	  $byteCounter[$n] -= $len
+
+	  If $byteCounter[$n] <= 10 Then
+		 FileClose($transFiles[$n])	; get and save the file
+		 $transFiles[$n] = ""	;clear the flag when file transfer ends
+		 sendCommand($n, "eof")	; send "eof" command to client
+		 logWrite($n,"(Server) Send eof to client.")
+	  EndIf
 	  Return
    EndIf
 
-   Switch $msg[1]
-	  Case "failed"
-		 closeClientConnection($n)
-	  Case "continue"
-		 $commands[$n] = StringTrimLeft($commands[$n],5)	; unhold the test command by delete the first 5 letters from commands
-	  Case "file"
-		 $transFiles[$n] = $workDir & $msg[2]	; clear the file name
-		 FileOpen(transFiles[$n], 16+1)	; get file name to be uploaded, and open for wtite append and binary mode
-	  Case "done"
-		 FileClose($transFiles[$n])	; get and save the screen capture file
-		 $transFiles[$n] = ""	; clear the file name
-   EndSwitch
-
-   If $transFiles[$n] <> "" Then
-	  FileWrite($transFiles[$n], $result)
+   If StringLen($reply) < 10 Then
+	  logWrite($n, "(Client) Sent " & $reply & " message to server. ")	; write the returned results into the log file
    Else
-	  If StringLen($result) < 10 Then
-		 logWrite($n, "(Client) Got " & $result & " message from client.")	; write the returned results into the log file
-	  Else
-		 logWrite($n, "(Client) " & $result)	; write the returned results into the log file
-	  EndIf
+	  logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
    EndIf
+
+   Switch StringLower($msg[1])
+	  Case "failed"
+		 popCommand($n)	; unhold the test command by delete the first 5 letters from commands
+		 $testRslt[$n] = False
+		 logWrite(11, $boxID[$n] & " test failed.")
+
+	  Case "quit"
+		 $testRslt[$n] = False
+		 logWrite(11, $boxID[$n] & " quit test.")
+		 closeConnection($n)
+
+	  Case "continue", "passed"
+		 popCommand($n)	; unhold the test command by delete the first 5 letters from commands
+		 ConsoleWrite($commands[$n] & @crlf)
+
+	  Case "file"
+		 Local $fileName = $msg[2]
+		 Local $len =  Int($msg[3])
+		 Local $netFileName = StringSplit($fileName, "\")
+		 Local $destFileName = $workDir & "log\" & $netFileName[$netFileName[0]]
+		 logWrite($n, $fileName & " from client is going to be saved as " & $destFileName & " in server.")
+		 logWrite($n, "Total " & $len & " bytes need to be stransfered.")
+		 $transFiles[$n] = FileOpen($destFileName,16+2)	; open file for  over-write in binary mode
+		 $byteCounter[$n] = $len
+		 pushCommand($n,"hold")
+		 sendCommand($n, "send")	; send "send" command to client to trigger the file transfer
+		 logWrite($n, "(Server) sent send command to client.")
+
+	  Case "name"
+		 Local $filename = $workDir & "log\" & $msg[2] & ".log"
+		 $logFiles[$n] = FileOpen($filename, 1+8) ; open log file for append write in text mode
+		 $boxID[$n] = $msg[2]	; get the boxID from client
+		 Local $boxUser = $msg[3]	; get the CopTrax App current user
+		 Local $clientVersion = $msg[4]	; get the App length
+		 Local $latestVersion = FileGetVersion($workDir & "latest\CopTraxTestClient.exe")
+		 logWrite(11, $boxID[$n] & " connected.")
+
+		 $hGUI[$n] = GUICreate($boxID[$n], 480,360)
+		 $gGUI[$n] = GUICtrlCreateEdit("", 2, 2, 475, 355, $WS_VSCROLL)
+		 GUICtrlSetFont($gGUI[$n], 9, 400, 0, "Courier New")
+		 GUISetState(@SW_SHOW)
+		 WinMove($hGUI[$n], "", $offsetX[$n], $offsetY[$n])
+
+		 $filename = $workdir & $boxID[$n] & ".txt"	; try to find if any individual test case exits
+		 Local $iCommands = readTestCase($filename)
+		 If $iCommands <> "" Then
+			$commands[$n] = $iCommands	; Stores the whole test case that will let the target machine run. When empty indicates that the target has completed all the test
+		 Else
+			popCommand($n)
+		 EndIf
+
+		 Local $s = "==================================="
+		 $s &= $s & $s
+		 logWrite($n, " ")
+		 logWrite($n, $s)
+		 logWrite($n, " Automation test for CopTrax DVR box " & $boxID[$n])
+		 logWrite($n, " Current user of the box : " & $boxUser)
+		 logWrite($n, " The test case is : ")
+		 logWrite($n, $commands[$n])
+		 logWrite($n, $s)
+		 logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
+		 If $clientVersion <> $latestVersion Then
+			pushCommand($n, "update C:\CopTraxTest\tmp\CopTraxTestClient.exe restart")
+			logWrite($n, "The current automation tester in the box is of length " & $clientVersion)
+			logWrite($n, "The latest automation tester in server is of length " & $latestVersion)
+			logWrite($n, "Updating the automation tester to the latest version. Test will restart.")
+		 EndIf
+
+   EndSwitch
 EndFunc
 
-Func update($n, $fileName)
-   Sleep(2000)	; wait 2s to start the file transfer
-   $localFileName = "C:\CopTraxTest\Latest\" & $fileName
+Func getLastTime($file, $timeType)
+   Local $fileData = FileGetTime($file, $timeType, 1)	; get last create time in String format
 
-   TCPSend($Sockets[$n], FileRead(FileOpen($localFileName, 16)))
-   FileClose($localFileName)
-   logWrite($n, "(Server) Update " & $fileName & "on client.")
-EndFunc
+   ; convert 20171101121030 string time format to this time format 2017/11/01 12:10:30
+   Return StringMid ( $fileData, 1 , 4 ) & '/' & StringMid ( $fileData, 5 , 2 ) & '/' & StringMid ( $fileData, 7 , 2 ) & _
+    ' ' & StringMid ( $fileData, 9 , 2 ) & ':' & StringMid ( $fileData, 11 , 2 ) & ':' & StringMid ( $fileData, 13 , 2 )
+EndFunc   ;==>Example
 
 Func OnAutoItExit()
-    TCPShutdown() ; Close the TCP service.
+   TCPShutdown() ; Close the TCP service.
+   Local $i
+   For $i = 0 To $max_connections
+	  If $logFiles[$i] <> 0 Then
+		 FileClose($logFiles[$i])
+		 $logFiles[$i] = 0
+	  EndIf
+   Next
+   FileClose($logFiles[11])
 EndFunc   ;==>OnAutoItExit
 
 Func _Accept_Connection ()
-   If $Sockets[0] = $max_connections Then Return
-   ;Makes sure no more Connections can be made.
-   Local $Accept = TCPAccept ($TCPListen)     ;Accepts incomming connections.
-   If $Accept = -1 Then Return
+	If $Sockets[0] = $max_connections Then Return
+	;Makes sure no more Connections can be made.
+	Local $Accept = TCPAccept($TCPListen)     ;Accepts incomming connections.
+	If $Accept = -1 Then Return
 
-   Local $currentTime = TimerDiff($hTimer)
-   For $i = 1 To $max_connections
-	  If $Sockets[$i] = 0 Then	;Find the first open socket.
-		 $Sockets[$i] = $Accept	;assigns that socket the incomming connection.
-		 $logFiles[$i] = ""	; Clear the client name for future updating from the client
-		 $commands[$i] = $testCommands	; Stores the whole test case that will let the target machine run. When empty indicates that the target has completed all the test
-		 $commandTimers[$i] = $currentTime + 1000	; Set command timer to be 1s later
-		 $connectionTimers[$i] = $currentTime + 2000*60	; Set connection lost timer to be 2mins later
-		 $Sockets[0] += 1   ;adds one to the Socket list.
-		 Return
-	  EndIf
-    Next
-    Return
- EndFunc
+	Local $currentTime = TimerDiff($hTimer)
+	For $i = 1 To $max_connections
+		If $Sockets[$i] = 0 Then	;Find the first open socket.
+			$heartBeatTimers[$i] = 1000*60
+			$Sockets[$i] = $Accept	;assigns that socket the incomming connection.
+			$logFiles[$i] = ""	; Clear the client name for future updating from the client
+			$commands[$i] = $testCommands	; Stores the whole test case that will let the target machine run. When empty indicates that the target has completed all the test
+			$commandTimers[$i] = $currentTime + 1000	; Set command timer to be 1s later
+			$connectionTimers[$i] = $currentTime + 2000*60	; Set connection lost timer to be 2mins later
+			$Sockets[0] += 1   ;adds one to the Socket list.
+			$testRslt[$i] = True	; initialize the result true until any failure
+			Return
+		EndIf
+	Next
+EndFunc
+
+Func popCommand($n)
+   Local $newCommand = StringSplit(StringLower($commands[$n]), " ")
+   If $newCommand[0] > 1 Then
+	  Local $lengthCommand = StringLen($newCommand[1] & " ")
+	  $commands[$n] = StringTrimLeft($commands[$n],$lengthCommand)
+	  return $newCommand[1]
+   Else
+	  return ""
+   EndIf
+EndFunc
+
+Func pushCommand($n, $newCommand)
+   $commands[$n] = $newCommand & " " & $commands[$n]
+EndFunc
+
+Func sendCommand($n, $command)
+	 TCPSend($Sockets[$n], $command)
+	 $heartBeatTimers[$n] = TimerDiff($hTimer) + 60 * 1000
+EndFunc
+
+Func HotKeyPressed()
+   Switch @HotKeyPressed ; The last hotkey pressed.
+	  Case "{Esc}" ; KeyStroke is the {ESC} hotkey. to stop testing and quit
+	  $testEnd = True	;	Stop testing marker
+
+    EndSwitch
+ EndFunc   ;==>HotKeyPressed
