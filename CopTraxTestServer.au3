@@ -1,6 +1,6 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Res_Description=Automation test server
-#AutoIt3Wrapper_Res_Fileversion=2.11.20.5
+#AutoIt3Wrapper_Res_Fileversion=2.11.21.5
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 ;
@@ -98,7 +98,7 @@ While Not $testEnd
 			parseCommand($i)	; get the new test command executed, the new timer is set in it
 		 EndIf
 
-		 If ($currentTime > $heartBeatTimers[$i]) And ($currentTime < $commandTimers[$i] - 50) Then ; check the heart-beat timer
+		 If ($currentTime > $heartBeatTimers[$i]) And ($currentTime < $commandTimers[$i] - 50*1000) Then ; check the heart-beat timer
 			sendCommand($i, "status")	; send a command for heart_beat
 			pushCommand($i, "hold")	; hold any new command from executing only after get a continue response from the client
 			$heartBeatTimers[$i] = $currentTime + 60*1000;
@@ -132,17 +132,17 @@ Func closeConnection($n)
 EndFunc
 
 Func parseCommand($n)
-   Local $newCommand = popCommand($n)
+	Local $newCommand = popCommand($n)
 
-   If $newCommand = "" Then 	; no command left to be precessed
-	  logWrite($n, "All tests passed.")
-	  logWrite(11, $boxID[$n] & " all tests passed.")
-	  closeConnection($n)
-	  Return
-   EndIf
+	If $newCommand = "" Then 	; no command left to be precessed
+		logWrite($n, "All tests passed.")
+		logWrite(11, $boxID[$n] & " all tests passed.")
+		closeConnection($n)
+		Return
+	EndIf
 
-   Local $currentTime = TimerDiff($hTimer)
-   $commandTimers[$n] =  $currentTime + 10*1000 ; time for next command to be executed
+	Local $currentTime = TimerDiff($hTimer)
+	$commandTimers[$n] =  $currentTime + 10*1000 ; time for next command to be executed
 
 	Local $nn, $mm
 	Switch $newCommand	; process the new command
@@ -198,10 +198,11 @@ Func parseCommand($n)
 			logWrite($n, "(Server) Sent " & $newCommand & " " & $nn & " command to client.")
 
 		Case "synctmz"
-			$nn = popCommand($n)
-			sendCommand($n, $newCommand & " " & $nn)	; send new test command to client
+			$nn = _Date_Time_GetTimeZoneInformation ( )
+			$mm = $nn[2]
+			sendCommand($n, $newCommand & " " & $mm)	; send new test command to client
 			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
-			logWrite($n, "(Server) Sent " & $newCommand & " " & $nn & " command to client.")
+			logWrite($n, "(Server) Sent " & $newCommand & " " & $mm & " command to client.")
 
 		Case "upload"
 			Local $fileName = popCommand($n)
@@ -234,21 +235,32 @@ Func parseCommand($n)
 ;   logWrite($n, "Remains test commands: " & $commands[$n])
 EndFunc
 
+Func _encode($datetime)
+	Local $t = _Date_Time_SystemTimeToDateTimeStr($datetime,1)
+	Return StringMid($t,1,4) & StringMid($t,6,2) & StringMid($t,9,2) & StringMid($t,12,2) & StringMid($t,15,2) & StringMid($t,18,2)
+EndFunc
+
 Func logWrite($n,$s)
-   If $n <= $max_connections+1 Then _FileWriteLog($logFiles[$n],$s)
-   GUICtrlSetData($gGui[$n], $s & @crlf, 1)
+	If $n <= $max_connections + 1 Then _FileWriteLog($logFiles[$n],$s)
+	Local $ss = StringSplit(StringLower($s), " ")
+	If $ss[0] > 0 And $ss[1] = "failed" Then
+		GUICtrlSetColor($gGui[$n], $COLOR_RED)
+	Else
+		GUICtrlSetColor($gGui[$n], $COLOR_BLACK)
+	EndIf
+	GUICtrlSetData($gGui[$n], $s & @crlf, 1)
 EndFunc
 
 Func readTestCase($fileName)
    Local $testFile = FileOpen($fileName,0)	; for test case reading, readonly
    Local $fileEnds = False
    Local $aLine, $commands
+   Local $m, $n
    Do
 	  $aLine = StringSplit(StringLower(FileReadLine($testFile)), " ")
 
 	  Switch $aLine[1]
 		 Case "record", "settings", "login"
-	  		Local $m, $n
 			If $aLine[0] < 2 Then
 			   $m = "1"
 			Else
@@ -263,8 +275,7 @@ Func readTestCase($fileName)
 
 			$commands &= $aLine[1] & " " & $m & " " & $n & " "
 
-		 Case "camera", "upload", "update", "synctmz"
-	  		Local $m
+		 Case "camera", "upload", "update", "pause"
 			If $aLine[0] < 2 Then
 			   $m = "1"
 			Else
@@ -272,7 +283,7 @@ Func readTestCase($fileName)
 			EndIf
 			$commands &= $aLine[1] & " " & $m & " "
 
-		 Case "review", "photo", "settings", "info", "status", "checkrecord", "restart", "stopapp", "radar", "quit", "runapp", "synctime"
+		 Case "review", "photo", "settings", "info", "status", "checkrecord", "restart", "stopapp", "radar", "quit", "runapp", "synctime", "synctmz"
 			$commands &= $aLine[1] & " "
 		 EndSwitch
    Until $aLine[1] = ""
@@ -368,8 +379,8 @@ Func processReply($n, $reply)
 		 logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
 		 If $clientVersion <> $latestVersion Then
 			pushCommand($n, "update C:\CopTraxTest\tmp\CopTraxTestClient.exe restart")
-			logWrite($n, "The current automation tester in the box is of length " & $clientVersion)
-			logWrite($n, "The latest automation tester in server is of length " & $latestVersion)
+			logWrite($n, "The current automation tester in the box is of version " & $clientVersion)
+			logWrite($n, "The latest automation tester in server is of version " & $latestVersion)
 			logWrite($n, "Updating the automation tester to the latest version. Test will restart.")
 		 EndIf
 
@@ -405,7 +416,7 @@ Func _Accept_Connection ()
 	Local $currentTime = TimerDiff($hTimer)
 	For $i = 1 To $max_connections
 		If $Sockets[$i] = 0 Then	;Find the first open socket.
-			$heartBeatTimers[$i] = 1000*60
+			$heartBeatTimers[$i] = $currentTime + 1000*60
 			$Sockets[$i] = $Accept	;assigns that socket the incomming connection.
 			$logFiles[$i] = ""	; Clear the client name for future updating from the client
 			$commands[$i] = $testCommands	; Stores the whole test case that will let the target machine run. When empty indicates that the target has completed all the test

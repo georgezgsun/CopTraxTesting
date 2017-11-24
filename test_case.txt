@@ -9,4 +9,4 @@ camera
 photo
 settings
 record 1 10
-record 20 10
+record 20 100

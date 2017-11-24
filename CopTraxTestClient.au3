@@ -1,6 +1,6 @@
 #RequireAdmin
 
-#pragma compile(FileVersion, 2.11.20.6)
+#pragma compile(FileVersion, 2.11.22.8)
 #pragma compile(FileDescription, Automation test client)
 #pragma compile(ProductName, AutomationTest)
 #pragma compile(ProductVersion, 2.11)
@@ -145,70 +145,72 @@ Func _quitCopTrax()
    EndIf
 
    Send("135799{ENTER}")	; type the administator password
+   MouseClick("", 500, 150)
    Return True
 EndFunc
 
 Func login($name, $password)
-   If Not _readyToTest() Then  Return False
+	If Not _readyToTest() Then  Return False
 
-   AutoItSetOption("SendKeyDelay", 200)
-   MouseClick("",960,560)	; click on the info button
-   Sleep(400)
+	AutoItSetOption("SendKeyDelay", 200)
+	MouseClick("",960,560)	; click on the info button
+	Sleep(400)
 
-   Local $mTitle = "Menu Action"
-   If WinWaitActive($mTitle,"",10) = 0 Then
-	  MsgBox($MB_OK, $mMB, "Cannot trigger the info window. " & @CRLF,2)
-	  _logWrite("Click to open info window failed.")
-	  WinClose($mTitle)
-	  Return False
-   EndIf
-   Sleep(100)
+	Local $mTitle = "Menu Action"
+	If WinWaitActive($mTitle,"",10) = 0 Then
+		MsgBox($MB_OK, $mMB, "Cannot trigger the info window. " & @CRLF,2)
+		_logWrite("Click to open info window failed.")
+		WinClose($mTitle)
+		Return False
+	EndIf
+	Sleep(100)
 
-   ControlClick($mTitle,"","[CLASS:WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad1; INSTANCE:1]")
-   Sleep(500)
-   Send("s")	; choose switch Account
-   ControlClick($mTitle,"","Apply")
+	ControlClick($mTitle,"","[CLASS:WindowsForms10.COMBOBOX.app.0.182b0e9_r11_ad1; INSTANCE:1]")
+	Sleep(500)
+	Send("s")	; choose switch Account
+	ControlClick($mTitle,"","Apply")
 
-   Sleep(500)
-   Local $mTitle = "CopTrax - Login / Create Account"
-   $mTitle = WinWaitActive($mTitle,"",10)
-   If $mTitle = 0 Then
-	  MsgBox($MB_OK, "Test Alert", "Cannot trigger the CopTrax-Login/Create Account window. " & @CRLF,2)
-	  _logWrite("Click Apply button to trigger the CopTrax-Login/Create Account window failed.")
-	  Return False
-   EndIf
+	Sleep(500)
+	Local $mTitle = "CopTrax - Login / Create Account"
+	$mTitle = WinWaitActive($mTitle,"",10)
+	If $mTitle = 0 Then
+		MsgBox($MB_OK, "Test Alert", "Cannot trigger the CopTrax-Login/Create Account window. " & @CRLF,2)
+		_logWrite("Click Apply button to trigger the CopTrax-Login/Create Account window failed.")
+		Return False
+	EndIf
 
-   ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:4]", $name)
-   Sleep(500)
+	ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:4]", $name)
+	Sleep(500)
 
-   ;ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:3]]", $password)
-   ControlClick($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:3]]")
-   Send($password)	; type the user password
-   Sleep(500)
-   ;ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:2]", $password)
-   ControlClick($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:2]")
-   Send($password)	; re-type the user password
+	;ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:3]]", $password)
+	ControlClick($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:3]]")
+	Send($password)	; type the user password
+	Sleep(500)
+	;ControlSetText($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:2]", $password)
+	ControlClick($mTitle, "", "[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:2]")
+	Send($password)	; re-type the user password
+	MouseClick("", 500, 230)
 
-   Sleep(2500)
-   Send("{ENTER}")
-   ControlClick($mTitle, "", "Register")
+	Sleep(2500)
+	Send("{ENTER}")
+	ControlClick($mTitle, "", "Register")
 
-   If WinWaitClose($mTitle,"",10) = 0 Then
-	  MsgBox($MB_OK, $mMB, "Clickon the Register button to close the Photo failed.",2)
-	  _logWrite("Click on the Register button to exit failed.")
-	  WinClose($mTitle)
-	  Return False
-   EndIf
+	If WinWaitClose($mTitle,"",10) = 0 Then
+		MsgBox($MB_OK, $mMB, "Clickon the Register button to close the window failed.",2)
+		_logWrite("Click on the Register button to exit failed.")
+		WinClose($mTitle)
+		Return False
+	EndIf
 
-   Sleep(3000)
+	Sleep(1000)
 
-   $userName = _getUserName()
-   If $userName <> $name Then
-	  _logWrite("Switch to new user failed. Current user is " & $userName)
-	  Return False
-   EndIf
+	$userName = _getUserName()
+	If $userName <> $name Then
+		_logWrite("Switch to new user failed. Current user is " & $userName)
+		Return False
+	EndIf
 
-   Return True
+	Return True
 EndFunc
 
 Func _startRecord()
@@ -254,6 +256,7 @@ Func _endRecord()
    ControlClick($mTitle,"","[CLASS:WindowsForms10.EDIT.app.0.182b0e9_r11_ad1; INSTANCE:1]")
    Send("This is a test input by CopTrax testing team.")
    Sleep(100)
+   MouseClick("", 670,90)
 
    ControlClick($mTitle,"","OK")
    Sleep(100)
@@ -268,82 +271,83 @@ Func _endRecord()
 EndFunc
 
 Func _testSettings($pre, $chunk)
-   If Not _readyToTest() Then  Return False
+	If Not _readyToTest() Then  Return False
 
-   _logWrite("Start settings function testing.")
-   MouseClick("",960, 460)
+	_logWrite("Start settings function testing.")
+	MouseClick("",960, 460)
 
-   Local $mTitle = "CopTrax II Setup"
-   Local $hWnd = WinWaitActive($mTitle, "", 10)
-   If WinWaitActive($hWnd, "", 10) = 0 Then
-	  MsgBox($MB_OK, $mMB, "Cannot trigger the settings function.", 2)
-	  _logWrite("Click to trigger the settings function failed.")
-	  Return False
-   EndIf
+	Local $mTitle = "CopTrax II Setup"
+	Local $hWnd = WinWaitActive($mTitle, "", 10)
+	If WinWaitActive($hWnd, "", 10) = 0 Then
+		MsgBox($MB_OK, $mMB, "Cannot trigger the settings function.", 2)
+		_logWrite("Click to trigger the settings function failed.")
+		Return False
+	EndIf
 
-   ControlClick($hWnd, "", "Test")
-   Sleep(500)
-   MouseClick("",260,285)
-   Sleep(200)
-   Switch $pre
-	  Case 0
-		 Send("0{ENTER}")
-	  Case 15
-		 Send("0{DOWN}{ENTER}")
-	  Case 30
-		 Send("3{ENTER}")
-	  Case 45
-		 Send("4{ENTER}")
-	  Case 60
-		 Send("6{ENTER}")
-	  Case 90
-		 Send("9{ENTER}")
-	  Case 120
-		 Send("9{DOWN}{ENTER}")
-   EndSwitch
-   Sleep(1000)
+	ControlClick($hWnd, "", "Test")
+	Sleep(500)
+	MouseClick("",260,285)
+	Sleep(200)
+	Switch $pre
+		Case 0
+			Send("0{ENTER}")
+		Case 15
+			Send("0{DOWN}{ENTER}")
+		Case 30
+			Send("3{ENTER}")
+		Case 45
+			Send("4{ENTER}")
+		Case 60
+			Send("6{ENTER}")
+		Case 90
+			Send("9{ENTER}")
+		Case 120
+			Send("9{DOWN}{ENTER}")
+	EndSwitch
+	Sleep(1000)
 
-   MouseClick("", 60, 120) ;"Hardware Triggers")
-   Sleep(1000)
-   ControlClick($hWnd, "", "Identify")
-   Sleep(2000)
+	MouseClick("", 60, 120) ;"Hardware Triggers")
+	Sleep(1000)
+	ControlClick($hWnd, "", "Identify")
+	Sleep(2000)
 
-   Local $txt = WinGetText("[ACTIVE]")
-   _logWrite("The current box ID and firmware are " & $txt)
-   $readTxt = StringSplit($txt, ",")
-   Local $serialTxt =  StringSplit($readTxt[3], " ")
-   Local $readID = StringStripWS($serialTxt[4],3)
-   ;_logWrite("The current box ID is " & $readID & ". The box ID in config file is " & $boxID)
-   ;_logWrite("The current box ID in binary is " & StringToBinary($readID) & ". The box ID in config file in binary is " & StringToBinary($boxID))
-   If StringCompare($readID, $boxID) <> 0 Then
-	  _logWrite("Changed the box ID in config file.")
-	  $boxID = $readID
-	  _renewConfig()
-   EndIf
+	Local $txt = StringTrimLeft(WinGetText("[ACTIVE]"), 2)
+	_logWrite("The current box ID and firmware are " & $txt)
+	$readTxt = StringSplit($txt, ",")
+	Local $serialTxt =  StringSplit($readTxt[3], " ")
+	Local $readID = StringStripWS($serialTxt[4],3)
+;	_logWrite("The current box ID is " & $readID & ". The box ID in config file is " & $boxID)
+;	_logWrite("The current box ID in binary is " & StringToBinary($readID) & ". The box ID in config file in binary is " & StringToBinary($boxID))
+	If StringCompare($readID, $boxID) <> 0 Then
+		_logWrite("Changed the box ID in config file.")
+		$boxID = $readID
+		_renewConfig()
+	EndIf
 
-   ControlClick("CopTrax", "", "OK")
-   Sleep(200)
+	ControlClick("CopTrax", "", "OK")
+	Sleep(200)
 
-   MouseClick("", 60, 240) ;"Upload & Storage")
-   Sleep(500)
+	MouseClick("", 60, 240) ;"Upload & Storage")
+	Sleep(500)
 
-   MouseClick("", 600,165)
-   Sleep(500)
-   Send("{BS 4}" & $chunk)
-   Sleep(1000)
+	MouseClick("", 600,165)
+	Sleep(500)
+	Send("{BS 4}" & $chunk)
+	Sleep(1000)
+	MouseClick("", 650,100)
 
-   ControlClick($hWnd, "", "Apply")
-   Sleep(2000)
+	ControlClick($hWnd, "", "Apply")
+	Sleep(2000)
 
-   If WinWaitClose($hWnd, "", 10) = 0 Then
-	  MsgBox($MB_OK, $mMB, "Click on the Apply button failed", 2)
-	  _logWrite("Click on the Apply button to quit settings failed.")
-	  WinClose($hWnd)
-	  Return False
-   EndIf
+	If WinWaitClose($hWnd, "", 10) = 0 Then
+		MsgBox($MB_OK, $mMB, "Click on the Apply button failed", 2)
+		_logWrite("Click on the Apply button to quit settings failed.")
+		WinClose($hWnd)
+		Return False
+	EndIf
 
-   $chunkTime = $chunk
-   Return True
+	$chunkTime = $chunk
+	Return True
 EndFunc
 
 Func _readyToTest()
@@ -491,8 +495,6 @@ Func _checkRecordedFiles()
    Local $path2 = $path1 & "\cam2"
    Local $fileTypes = ["*.*","*.wmv", "*.jpg", "*.gps", "*.txt", "*.rdr", "*.vm", "*.trax", "*.rp"]
    Local $latestFiles[9+9]
-   _logWrite($path1)
-   _logWrite($path2)
    _logWrite("The setup chunk time is " & $chunkTime & " minutes.")
 
    Local $i
@@ -500,43 +502,55 @@ Func _checkRecordedFiles()
 	  $latestFiles[$i] = _getLatestFile($path1, $fileTypes[$i])
 	  $latestFiles[$i+9] = _getLatestFile($path2, $fileTypes[$i])
    Next
-   Local $file0 = _getLatestFile($path1, "*.avi")
-   Local $time0 = _readFilenameTime($file0)
-   Local $time1 = _readFilenameTime($latestFiles[1])
-   If $time0 > $time1 Then $latestFiles[1] = $file0
-   $file0 = _getLatestFile($path2, "*.avi")
-   $time0 = _readFilenameTime($file0)
-   If $time0 > $time1 Then $latestFiles[10] = $file0
 
-   Local $time0 = _readFilenameTime($latestFiles[0])	; $time0 is of format yyyymmddhhmmss
-   Local $time1 = _readFilenameTime($latestFiles[9])
-   If _getTimeDiff($time0,$time1) > 0 Then
-	  $time0 = $time1
-   EndIf
+	Local $file0 = _getLatestFile($path1, "*.avi")
+	Local $time0 = _readFilenameTime($file0)
+	Local $time1 = _readFilenameTime($latestFiles[1])
+	If $time0 > $time1 Then $latestFiles[1] = $file0
+	$file0 = _getLatestFile($path2, "*.avi")
+	$time0 = _readFilenameTime($file0)
+	$time1 = _readFilenameTime($latestFiles[10])
+	If $time0 > $time1 Then $latestFiles[10] = $file0
 
-   Local $fileName, $fileSize, $createTime
-   Local $chk = True
-   For $i = 1 To 17
-	  If $i = 9 Then ContinueLoop
+	$time0 = _readFilenameTime($latestFiles[0])	; $time0 is of format yyyymmddhhmmss
+	$time1 = _readFilenameTime($latestFiles[9])
+	If _getTimeDiff($time0,$time1) > 0 Then
+		$time0 = $time1
+	EndIf
 
-	  $fileName = $latestFiles[$i]
-	  $fileSize = FileGetSize($fileName)
-	  $createTime = _readFilenameTime($fileName)
+	$file0 = _getLatestFile("C:\CopTrax-Backup", "*.avi")
+	$time1 = _readFilenameTime($file0)
 
-	  Local $n = $i < 9 ? $i : $i-9
-	  If $fileSize > 10 Then
-		_logWrite("Last " & $fileTypes[$n] & " was created at " & $createTime & " with size of " & $fileSize)
-	  EndIf
+	_logWrite($path1 & " " & $time0)
+	Local $fileName, $fileSize, $createTime
+	Local $chk = True
+	For $i = 1 To 17
+		If $i = 9 Then
+			_logWrite($path2)
+			ContinueLoop
+		EndIf
 
-	  If ($i = 1 Or $i = 2 Or $i = 3 Or $i = 10 Or $i = 11 Or $i=12) And (_getTimeDiff($createTime, $time0) > 3) Then
-		  _logWrite("Find critical file " & $fileTypes[$n] & " missed in records.")
-		  $chk = False	; return False when .gps or .wmv or .jpg files were missing,
-	  EndIf
-   Next
+		$fileName = $latestFiles[$i]
+		$fileSize = FileGetSize($fileName)
+		$createTime = _readFilenameTime($fileName)
+
+		Local $n = $i < 9 ? $i : $i-9
+		If $fileSize > 10 Then
+			_logWrite("Last " & $fileTypes[$n] & " was created at " & $createTime & " with size of " & $fileSize)
+		EndIf
+
+		If ($i = 1 Or $i = 2 Or $i = 3 Or $i = 10 Or $i = 11 Or $i=12) And (_getTimeDiff($createTime, $time0) > 3) Then
+			_logWrite("Find critical file " & $fileTypes[$n] & " missed in records.")
+			$chk = False	; return False when .gps or .wmv or .jpg files were missing,
+			If ($i = 1 Or $i = 10) And Abs(_getTimeDiff($time1, $time0)) < 3 Then
+				_logWrite("Find " & $file0 & " in backup folder.")
+			EndIf
+		EndIf
+	Next
 
 	Local $chunk1 = _getChunkTime($latestFiles[1])
 	Local $chunk2 = _getChunkTime($latestFiles[10])
-	_logWrite("For the latest *.wmv or *.avi, the chunk time is " & $chunk1 & " and " & $chunk2 )
+	_logWrite("For the latest *.wmv or *.avi, the chunk time is " & $chunk1 & " and " & $chunk2 & " seconds.")
    If $chunk1 > $chunkTime*60 + 30 Then $chk = False
    If $chunk2 > $chunkTime*60 + 30 Then $chk = False
 
@@ -547,20 +561,17 @@ Func _getLatestFile($path,$type)
     ; List the files only in the directory using the default parameters.
     Local $aFileList = _FileListToArray($path, $type, 1, True)
 
-    If @error <> 0 Then
-	  ConsoleWrite(@error & " " & $path & " " & $type & @CRLF)
-	  Return ""
-    EndIf
+    If @error <> 0 Then Return ""
 
-   Local $i, $latestFile, $date0 = "00000000000000", $fileDate
-   For $i = 1 to $aFileList[0]
-	  Local $fileDate = _readFilenameTime($aFileList[$i])	; get last create time in String format
-	  if _getTimeDiff($fileDate, $date0) < 0 Then
-		 $date0 = $fileDate
-		 $latestFile = $aFileList[$i]
-	  EndIf
-   Next
-   Return $latestFile
+	Local $i, $latestFile, $date0 = "00000000000000", $fileDate
+	For $i = 1 to $aFileList[0]
+		Local $fileDate = _readFilenameTime($aFileList[$i])	; get last create time in String format
+		if _getTimeDiff($fileDate, $date0) < 0 Then
+			$date0 = $fileDate
+			$latestFile = $aFileList[$i]
+		EndIf
+	Next
+	Return $latestFile
 EndFunc
 
 Func _readFilenameTime($file)
@@ -580,10 +591,11 @@ EndFunc
 
 Func _getTimeDiff($time1,$time2)
    If StringLen($time1 & $time2) < 26 Then Return 100000
+   Local $t0 = (Number(StringMid($time2, 1, 8)) - Number(StringMid($time1, 1, 8)))*24*3600
    ; get the time difference in format yyyymmddhhmmss
    Local $t1 = Number(StringMid($time1, 9, 2)) * 3600 + Number(StringMid($time1, 11, 2)) * 60 + Number(StringMid($time1, 13, 2))
    Local $t2 = Number(StringMid($time2, 9, 2)) * 3600 + Number(StringMid($time2, 11, 2)) * 60 + Number(StringMid($time2, 13, 2))
-   Return $t2 - $t1
+   Return $t2 - $t1 + $t0
 EndFunc
 
 Func _listenNewCommand()
@@ -604,8 +616,8 @@ Func _listenNewCommand()
 		Return
 	EndIf
 
-	Local $Recv = StringSplit(StringLower($raw), " ")
-	Switch $Recv[1] ; The last hotkey pressed.
+	Local $Recv = StringSplit($raw, " ")
+	Switch StringLower($Recv[1]) ; The last hotkey pressed.
 		Case "runapp" ; get a stop command, going to stop testing and quit
 			MsgBox($MB_OK, $mMB, "Re-starting the CopTrax",2)
 			Run("c:\Program Files (x86)\IncaX\CopTrax\IncaXPCApp.exe", "c:\Program Files (x86)\IncaX\CopTrax")
@@ -693,7 +705,7 @@ Func _listenNewCommand()
 
 		Case "update"
 			MsgBox($MB_OK, $mMB, "Testing file update function",2)
-			If ($Recv[0] >= 3) And updateFile($Recv[2], Int($Recv[3])) Then
+			If ($Recv[0] >=3) And updateFile($Recv[2], Int($Recv[3])) Then
 				_logWrite("Continue")
 			Else
 				_logWrite("FAILED to update " & $Recv[2])
@@ -702,9 +714,17 @@ Func _listenNewCommand()
 		Case "synctime"
 			MsgBox($MB_OK, $mMB, "Synchronizing client time to server",2)
 			If ($Recv[0] >= 2) And _syncTime($Recv[2]) Then
-				_logWrite("Passed date and time synchronization")
+				_logWrite("PASSED date and time synchronization")
 			Else
 				_logWrite("FAILED to sync date and time.")
+			EndIf
+
+		Case "synctmz"
+			MsgBox($MB_OK, $mMB, "Synchronizing client timezone to server's",2)
+			If ($Recv[0] >= 2) And _syncTMZ(StringMid($raw, 9)) Then
+				_logWrite("PASSED timezone synchronization")
+			Else
+				_logWrite("FAILED to sync timezone to server's.")
 			EndIf
 
 		Case "checkrecord"
@@ -712,7 +732,7 @@ Func _listenNewCommand()
 			If _checkRecordedFiles() Then
 				_logWrite("PASSED the check on recorded files")
 			Else
-				_logWrite("FAILED on the check of recorded files")
+				_logWrite("Continue Warning on the check of recorded files")
 			EndIf
 
 		Case "eof"
@@ -737,21 +757,34 @@ Func _listenNewCommand()
 			_logCPUMemory()
 			_uploadFile()
 
-		Case "info", "synctmz"
+		Case "info"
 			_logWrite("continue function not programmed")
 
 	EndSwitch
  EndFunc
 
-Func _syncTime($datetime)
+Func _encodeSystemTime($datetime)
 	Local $yyyy = Number(StringMid($datetime,1,4))
 	Local $mon = Number(StringMid($datetime,5,2))
 	Local $dd = Number(StringMid($datetime,7,2))
 	Local $hh = Number(StringMid($datetime,9,2))
 	Local $min = Number(StringMid($datetime,11,2))
 	Local $ss = Number(StringMid($datetime,13,2))
-	Local $tSysTime  = _Date_Time_EncodeSystemTime( $mon, $dd, $yyyy, $hh, $min, $ss )
+	Return _Date_Time_EncodeSystemTime( $mon, $dd, $yyyy, $hh, $min, $ss )
+EndFunc
+
+Func _syncTime($datetime)
+	Local $tSysTime  = _encodeSystemTime($datetime)
 	Return _Date_Time_SetSystemTime($tSysTime)
+EndFunc
+
+Func _syncTMZ($tmz)
+	Local $s = _Date_Time_GetTimeZoneInformation()
+	_logWrite("Original time zone is " & $s[2] & ". Changing it to " & $tmz)
+	RunWait('tzutil /s "' & $tmz & '"')
+	Local $s = _Date_Time_GetTimeZoneInformation()
+	_logWrite("Now current time zone is " & $s[2])
+	Return $s[2] = $tmz
 EndFunc
 
 Func _uploadFile()
