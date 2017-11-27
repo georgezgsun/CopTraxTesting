@@ -1,10 +1,11 @@
 #RequireAdmin
 
-#pragma compile(FileVersion, 2.11.22.8)
+#pragma compile(FileVersion, 2.11.27.4)
 #pragma compile(FileDescription, Automation test client)
 #pragma compile(ProductName, AutomationTest)
 #pragma compile(ProductVersion, 2.11)
 #pragma compile(CompanyName, 'Lele & Ben International')
+#pragma compile(Icon, automation.ico)
 ;
 ; Test client for CopTrax Version: 1.0
 ; Language:       AutoIt
@@ -25,6 +26,9 @@
 #include <Array.au3>
 #include <Timers.au3>
 #include <Date.au3>
+#include <Misc.au3>
+
+_Singleton('Automation test client')
 
 HotKeySet("{Esc}", "HotKeyPressed") ; Esc to stop testing
 HotKeySet("q", "HotKeyPressed") ; Esc to stop testing
@@ -35,58 +39,71 @@ TCPStartup()
 Global $ip =  TCPNameToIP("10.25.50.110")
 Global $port = 16869
 Global $Socket = -1
-Global $boxID = "undefined"
+Global $boxID = ""
 Global $filesToBeSent = ""
-Global $fileContent
-Global $bytesCounter
-Global $fileToBeUpdate = ""
+Global $fileContent = ""
+Global $bytesCounter = 0
 Global $configFile = "C:\CopTraxTest\client.cfg"
 _configRead()
 OnAutoItExitRegister("OnAutoItExit")	; Register OnAutoItExit to be called when the script is closed.
 
-Global $workDir = "C:\CopTraxTest\"
-Global $testEnd = FileGetVersion($workDir & "CopTraxTestClient.exe") <> FileGetVersion($workDir & "tmp\CopTraxTestClient.exe")
-Global $restart = False
-$workDir = "C:\CopTraxTest\tmp\"
+Global $workDir = "C:\CopTraxTest\tmp\"
+Global $fileToBeUpdate = $workDir &  "CopTraxTestClient.exe"
+Global $testEnd = FileExists($fileToBeUpdate) ? FileGetVersion(@AutoItExe) <> FileGetVersion($fileToBeUpdate) : False
+$fileToBeUpdate = ""
+Global $restart = $testEnd
 
 Global $mCopTrax = 0
 Global $title = "CopTrax II is not up yet"
 Global $userName = ""
 Global Const $mMB = "CopTrax GUI Automation Test"
 
-MsgBox($MB_OK, $mMB, "Automation testing start. Connecting to" & $ip & "..." & @CRLF & "Esc to quit", 2)
+If $testEnd Then
+	MsgBox($MB_OK, $mMB, "Automation test finds new update." & @CRLF & "Restarting now to complete the update.", 2)
+Else
+	MsgBox($MB_OK, $mMB, "Automation testing start. Connecting to" & $ip & "..." & @CRLF & "Esc to quit", 2)
+EndIf
 
 Global $hTimer = TimerInit()	; Begin the timer and store the handler
-Global $timeout =  TimerDiff($hTimer) + 1000*60
+Local $currentTime = TimerDiff($hTimer)
+Global $timeout = 1000
 Global $chunkTime = 0
 Global $sendBlock = False
 
 AutoItSetOption ("WinTitleMatchMode", 2)
 Global $mTitleName = "CopTrax II v"
 
-If StringLower($boxID) = "tbd" Then
+If Not StringRegExp($boxID, "[A-Za-z]{2}[0-9]{6}")  Then
    _testSettings(0,10)
 EndIf
 
 While Not $testEnd
-   If $mCopTrax = 0 Then
-	  $mCopTrax = WinActivate($mTitleName)
-	  If $mCopTrax <> 0 Then
-		 $userName = _getUserName()
-	  EndIf
-   EndIf
+	$currentTime = TimerDiff($hTimer)
+	If $mCopTrax = 0 Then
+		$mCopTrax = WinActivate($mTitleName)
+		If $mCopTrax <> 0 Then
+			$userName = _getUserName()
+		EndIf
+	EndIf
 
-   If $Socket < 0 Then
-	  $Socket = TCPConnect($ip, $port)
-	  If $Socket >= 0 Then
-		 _logWrite("name " & $boxID & " " & $userName & " " & FileGetVersion($workDir & "CopTraxTestClient.exe") & " " & $title)
-		 MsgBox($MB_OK, $mMB, "Connected to server",2)
-	  EndIf
+	If $Socket < 0 Then
+		$Socket = TCPConnect($ip, $port)
+		If $Socket >= 0 Then
+			_logWrite("name " & $boxID & " " & $userName & " " & FileGetVersion($workDir & "CopTraxTestClient.exe") & " " & $title)
+			MsgBox($MB_OK, $mMB, "Connected to server",2)
+			$timeout = $currentTime + 1000*60
+		Else
+	  		If  $currentTime > $timeout Then
+				MsgBox($MB_OK, $mMB, "Have not connected to server yet. Please check the network connection.")
+				$timeout += 1000*10	; check the networks connection every 10s.
+			EndIf
+		EndIf
    Else
 	  _listenNewCommand()
-	  If  TimerDiff($hTimer) > $timeout Then
-		 _logWrite("quit")		; log the CPU and memory usage every minute
+	  If  $currentTime > $timeout Then
+		 _logWrite("quit")		; Not get any commands from the server, then quit and trying to connect the server again
 		 $Socket = -1
+		 $timeout += 1000*10 ; check the networks connection in 10s.
 	  EndIf
    EndIf
    Sleep(100)
@@ -149,7 +166,7 @@ Func _quitCopTrax()
    Return True
 EndFunc
 
-Func login($name, $password)
+Func _login($name, $password)
 	If Not _readyToTest() Then  Return False
 
 	AutoItSetOption("SendKeyDelay", 200)
@@ -171,7 +188,7 @@ Func login($name, $password)
 	ControlClick($mTitle,"","Apply")
 
 	Sleep(500)
-	Local $mTitle = "CopTrax - Login / Create Account"
+	Local $mTitle = "CopTrax - _login / Create Account"
 	$mTitle = WinWaitActive($mTitle,"",10)
 	If $mTitle = 0 Then
 		MsgBox($MB_OK, "Test Alert", "Cannot trigger the CopTrax-Login/Create Account window. " & @CRLF,2)
@@ -536,13 +553,13 @@ Func _checkRecordedFiles()
 
 		Local $n = $i < 9 ? $i : $i-9
 		If $fileSize > 10 Then
-			_logWrite("Last " & $fileTypes[$n] & " was created at " & $createTime & " with size of " & $fileSize)
+			_logWrite("Latest " & $fileTypes[$n] & " was created at " & $createTime & " with size of " & $fileSize)
 		EndIf
 
 		If ($i = 1 Or $i = 2 Or $i = 3 Or $i = 10 Or $i = 11 Or $i=12) And (_getTimeDiff($createTime, $time0) > 3) Then
 			_logWrite("Find critical file " & $fileTypes[$n] & " missed in records.")
 			$chk = False	; return False when .gps or .wmv or .jpg files were missing,
-			If ($i = 1 Or $i = 10) And Abs(_getTimeDiff($time1, $time0)) < 3 Then
+			If Abs(_getTimeDiff($time1, $time0)) < 3 Then
 				_logWrite("Find " & $file0 & " in backup folder.")
 			EndIf
 		EndIf
@@ -550,7 +567,8 @@ Func _checkRecordedFiles()
 
 	Local $chunk1 = _getChunkTime($latestFiles[1])
 	Local $chunk2 = _getChunkTime($latestFiles[10])
-	_logWrite("For the latest *.wmv or *.avi, the chunk time is " & $chunk1 & " and " & $chunk2 & " seconds.")
+	_logWrite("For " & $latestFiles[1] & ", the chunk time is " & $chunk1 & " seconds.")
+	_logWrite("For " & $latestFiles[10] & ", the chunk time is " & $chunk2 & " seconds.")
    If $chunk1 > $chunkTime*60 + 30 Then $chk = False
    If $chunk2 > $chunkTime*60 + 30 Then $chk = False
 
@@ -657,7 +675,7 @@ Func _listenNewCommand()
 
 		Case "login" ; Get a stop setting command, going to test the settings function
 			MsgBox($MB_OK, $mMB, "Testing the user switch function",2)
-			If ($Recv[0] >= 3) And login($Recv[2], $Recv[3]) Then
+			If ($Recv[0] >= 3) And _login($Recv[2], $Recv[3]) Then
 				_logWrite("PASSED the test on user switch function")
 			Else
 				_logWrite("FAILED to switch the user")
@@ -670,6 +688,7 @@ Func _listenNewCommand()
 			Else
 				_logWrite("FAILED to switch the camera")
 			EndIf
+			_uploadFile()
 
 		Case "photo" ; Get a stop photo command, going to test the photo function
 			MsgBox($MB_OK, $mMB, "Testing the photo function",2)
@@ -705,7 +724,7 @@ Func _listenNewCommand()
 
 		Case "update"
 			MsgBox($MB_OK, $mMB, "Testing file update function",2)
-			If ($Recv[0] >=3) And updateFile($Recv[2], Int($Recv[3])) Then
+			If ($Recv[0] >=3) And _updateFile($Recv[2], Int($Recv[3])) Then
 				_logWrite("Continue")
 			Else
 				_logWrite("FAILED to update " & $Recv[2])
@@ -714,7 +733,7 @@ Func _listenNewCommand()
 		Case "synctime"
 			MsgBox($MB_OK, $mMB, "Synchronizing client time to server",2)
 			If ($Recv[0] >= 2) And _syncTime($Recv[2]) Then
-				_logWrite("PASSED date and time synchronization")
+				_logWrite("PASSED date and time syncing. The client is now " & @YEAR & "/" & @MON & "/" & @MDAY & " " & @HOUR & ":" & @MIN & ":" & @SEC)
 			Else
 				_logWrite("FAILED to sync date and time.")
 			EndIf
@@ -775,7 +794,7 @@ EndFunc
 
 Func _syncTime($datetime)
 	Local $tSysTime  = _encodeSystemTime($datetime)
-	Return _Date_Time_SetSystemTime($tSysTime)
+	Return _Date_Time_SetLocalTime($tSysTime)
 EndFunc
 
 Func _syncTMZ($tmz)
@@ -807,7 +826,7 @@ Func _uploadFile()
 	FileClose($file)
 EndFunc
 
-Func updateFile($filename, $filesize)
+Func _updateFile($filename, $filesize)
    $fileToBeUpdate = FileOpen($filename, 16+8+2)	; binary overwrite and force create directory
    $bytesCounter = $filesize
    Return True

@@ -1,8 +1,10 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Res_Description=Automation test server
-#AutoIt3Wrapper_Res_Fileversion=2.11.21.5
+#AutoIt3Wrapper_Res_Fileversion=2.11.21.7
 #AutoIt3Wrapper_Res_Fileversion_AutoIncrement=y
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
+
+#pragma compile(Icon, automation.ico)
 ;
 ; Test Server for CopTrax
 ; Version: 1.0
@@ -25,7 +27,7 @@
 #include <GUIConstantsEx.au3>
 #include <WindowsConstants.au3>
 
-HotKeySet("{Esc}", "HotKeyPressed") ; Esc to stop testing
+HotKeySet("!{Esc}", "HotKeyPressed") ; Alt-Esc to stop testing
 
 Global Const $max_connections = 10	; define the max client numbers
 Local $ipServer = @IPAddress1
@@ -157,7 +159,7 @@ Func parseCommand($n)
 			Else
 				pushCommand($n, "hold endrecord")	; hold any new command from executing only after get a continue response from the client
 			EndIf
-			$commandTimers[$n] += $mm * 60*1000	; set the next command timer xx minutes later
+			$commandTimers[$n] += ($mm * 60 - 10) * 1000	; set the next command timer xx minutes later
 			logWrite($n, "(Server) Sent " & $newCommand & " command to client. The stop record command will be sent in " & $mm & " mins.")
 
 		Case "endrecord"
@@ -172,9 +174,9 @@ Func parseCommand($n)
 			sendCommand($n, $newCommand & " " & $mm & " " & $nn)	; send new test command to client
 			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
 			logWrite($n, "(Server) Sent " & $newCommand & " " & $mm & " " & $nn & " command to client.")
-			$commandTimers[$n] += 10*1000	; add 10 more seconds for upload function to be activiate
+			$commandTimers[$n] += 5*1000	; add 5 more seconds
 
-		Case "camera"
+		Case "camera", "upload"
 			$nn = popCommand($n)
 			sendCommand($n, $newCommand & " " & $nn)	; send new test command to client
 			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
@@ -204,13 +206,6 @@ Func parseCommand($n)
 			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
 			logWrite($n, "(Server) Sent " & $newCommand & " " & $mm & " command to client.")
 
-		Case "upload"
-			Local $fileName = popCommand($n)
-			$newCommand &= " " & $fileName
-			sendCommand($n, $newCommand)	; send new test command to client
-			logWrite($n, "(Server) Sent " & $newCommand & " command to client.")
-			pushCommand($n, "hold")	; hold any new command from executing only after get a continue response from the client
-
 		Case "update"
 			Local $fileName = popCommand($n)
 			Local $netFileName = StringSplit($fileName, "\")
@@ -233,11 +228,6 @@ Func parseCommand($n)
 
    EndSwitch
 ;   logWrite($n, "Remains test commands: " & $commands[$n])
-EndFunc
-
-Func _encode($datetime)
-	Local $t = _Date_Time_SystemTimeToDateTimeStr($datetime,1)
-	Return StringMid($t,1,4) & StringMid($t,6,2) & StringMid($t,9,2) & StringMid($t,12,2) & StringMid($t,15,2) & StringMid($t,18,2)
 EndFunc
 
 Func logWrite($n,$s)
@@ -293,107 +283,100 @@ Func readTestCase($fileName)
 EndFunc
 
 Func processReply($n, $reply)
-   Local $msg = StringSplit($reply, " ")
-   Local $len
-   If $transFiles[$n] <> "" Then	; This indicates the coming message shall be saved in file
-	  FileWrite($transFiles[$n], $reply)
-	  $len = StringLen($reply)
-	  logWrite($n, "(Server) Received " & $len & " bytes, write them to file.")
-	  $byteCounter[$n] -= $len
+	Local $msg = StringSplit($reply, " ")
+	Local $len
+	If $transFiles[$n] <> "" Then	; This indicates the coming message shall be saved in file
+		FileWrite($transFiles[$n], $reply)
+		$len = StringLen($reply)
+		logWrite($n, "(Server) Received " & $len & " bytes, write them to file.")
+		$byteCounter[$n] -= $len
 
-	  If $byteCounter[$n] <= 10 Then
-		 FileClose($transFiles[$n])	; get and save the file
-		 $transFiles[$n] = ""	;clear the flag when file transfer ends
-		 sendCommand($n, "eof")	; send "eof" command to client
-		 logWrite($n,"(Server) Send eof to client.")
-	  EndIf
-	  Return
-   EndIf
+		If $byteCounter[$n] <= 10 Then
+			FileClose($transFiles[$n])	; get and save the file
+			$transFiles[$n] = ""	;clear the flag when file transfer ends
+			sendCommand($n, "eof")	; send "eof" command to client
+			logWrite($n,"(Server) Send eof to client.")
+		EndIf
+		Return
+	EndIf
 
-   If StringLen($reply) < 10 Then
-	  logWrite($n, "(Client) Sent " & $reply & " message to server. ")	; write the returned results into the log file
-   Else
-	  logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
-   EndIf
+	If StringLen($reply) < 10 Then
+		logWrite($n, "(Client) Sent " & $reply & " message to server. ")	; write the returned results into the log file
+	Else
+		logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
+	EndIf
 
-   Switch StringLower($msg[1])
-	  Case "failed"
-		 popCommand($n)	; unhold the test command by delete the first 5 letters from commands
-		 $testRslt[$n] = False
-		 logWrite(11, $boxID[$n] & " test failed.")
+	Switch StringLower($msg[1])
+		Case "failed"
+			popCommand($n)	; unhold the test command by delete the first 5 letters from commands
+			$testRslt[$n] = False
+			logWrite(11, $boxID[$n] & " test failed.")
 
-	  Case "quit"
-		 $testRslt[$n] = False
-		 logWrite(11, $boxID[$n] & " quit test.")
-		 closeConnection($n)
+		Case "quit"
+			$testRslt[$n] = False
+			logWrite(11, $boxID[$n] & " quit test.")
+			closeConnection($n)
 
-	  Case "continue", "passed"
-		 popCommand($n)	; unhold the test command by delete the first 5 letters from commands
-		 ConsoleWrite($commands[$n] & @crlf)
+		Case "continue", "passed"
+			popCommand($n)	; unhold the test command by delete the first 5 letters from commands
+			ConsoleWrite($commands[$n] & @crlf)
 
-	  Case "file"
-		 Local $fileName = $msg[2]
-		 Local $len =  Int($msg[3])
-		 Local $netFileName = StringSplit($fileName, "\")
-		 Local $destFileName = $workDir & "log\" & $netFileName[$netFileName[0]]
-		 logWrite($n, $fileName & " from client is going to be saved as " & $destFileName & " in server.")
-		 logWrite($n, "Total " & $len & " bytes need to be stransfered.")
-		 $transFiles[$n] = FileOpen($destFileName,16+2)	; open file for  over-write in binary mode
-		 $byteCounter[$n] = $len
-		 pushCommand($n,"hold")
-		 sendCommand($n, "send")	; send "send" command to client to trigger the file transfer
-		 logWrite($n, "(Server) sent send command to client.")
+		Case "file"
+			Local $fileName = $msg[2]
+			Local $len =  Int($msg[3])
+			Local $netFileName = StringSplit($fileName, "\")
+			Local $destFileName = $workDir & "log\" & $netFileName[$netFileName[0]]
+			logWrite($n, $fileName & " from client is going to be saved as " & $destFileName & " in server.")
+			logWrite($n, "Total " & $len & " bytes need to be stransfered.")
+			$transFiles[$n] = FileOpen($destFileName,16+2)	; open file for  over-write in binary mode
+			$byteCounter[$n] = $len
+			pushCommand($n,"hold")
+			sendCommand($n, "send")	; send "send" command to client to trigger the file transfer
+			logWrite($n, "(Server) sent send command to client.")
 
-	  Case "name"
-		 Local $filename = $workDir & "log\" & $msg[2] & ".log"
-		 $logFiles[$n] = FileOpen($filename, 1+8) ; open log file for append write in text mode
-		 $boxID[$n] = $msg[2]	; get the boxID from client
-		 Local $boxUser = $msg[3]	; get the CopTrax App current user
-		 Local $clientVersion = $msg[4]	; get the App length
-		 Local $latestVersion = FileGetVersion($workDir & "latest\CopTraxTestClient.exe")
-		 logWrite(11, $boxID[$n] & " connected.")
+		Case "name"
+			Local $filename = $workDir & "log\" & $msg[2] & ".log"
+			$logFiles[$n] = FileOpen($filename, 1+8) ; open log file for append write in text mode
+			$boxID[$n] = $msg[2]	; get the boxID from client
+			Local $boxUser = $msg[3]	; get the CopTrax App current user
+			Local $clientVersion = $msg[4]	; get the App length
+			Local $latestVersion = FileGetVersion($workDir & "latest\CopTraxTestClient.exe")
+			Local $clientIP = SocketToIP($Sockets[$n])
+			logWrite(11, $boxID[$n] & " connected on " & $clientIP & ".")
 
-		 $hGUI[$n] = GUICreate($boxID[$n], 480,360)
-		 $gGUI[$n] = GUICtrlCreateEdit("", 2, 2, 475, 355, $WS_VSCROLL)
-		 GUICtrlSetFont($gGUI[$n], 9, 400, 0, "Courier New")
-		 GUISetState(@SW_SHOW)
-		 WinMove($hGUI[$n], "", $offsetX[$n], $offsetY[$n])
+			$hGUI[$n] = GUICreate($boxID[$n], 480,360)
+			$gGUI[$n] = GUICtrlCreateEdit("", 2, 2, 475, 355, $WS_VSCROLL)
+			GUICtrlSetFont($gGUI[$n], 9, 400, 0, "Courier New")
+			GUISetState(@SW_SHOW)
+			WinMove($hGUI[$n], "", $offsetX[$n], $offsetY[$n])
 
-		 $filename = $workdir & $boxID[$n] & ".txt"	; try to find if any individual test case exits
-		 Local $iCommands = readTestCase($filename)
-		 If $iCommands <> "" Then
-			$commands[$n] = $iCommands	; Stores the whole test case that will let the target machine run. When empty indicates that the target has completed all the test
-		 Else
-			popCommand($n)
-		 EndIf
+			$filename = $workdir & $boxID[$n] & ".txt"	; try to find if any individual test case exits
+			Local $iCommands = readTestCase($filename)
+			If $iCommands <> "" Then
+				$commands[$n] = $iCommands	; Stores the whole test case
+			Else
+				popCommand($n)
+			EndIf
 
-		 Local $s = "==================================="
-		 $s &= $s & $s
-		 logWrite($n, " ")
-		 logWrite($n, $s)
-		 logWrite($n, " Automation test for CopTrax DVR box " & $boxID[$n])
-		 logWrite($n, " Current user of the box : " & $boxUser)
-		 logWrite($n, " The test case is : ")
-		 logWrite($n, $commands[$n])
-		 logWrite($n, $s)
-		 logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
-		 If $clientVersion <> $latestVersion Then
-			pushCommand($n, "update C:\CopTraxTest\tmp\CopTraxTestClient.exe restart")
-			logWrite($n, "The current automation tester in the box is of version " & $clientVersion)
-			logWrite($n, "The latest automation tester in server is of version " & $latestVersion)
-			logWrite($n, "Updating the automation tester to the latest version. Test will restart.")
-		 EndIf
+			Local $s = "==================================="
+			$s &= $s & $s
+			logWrite($n, " ")
+			logWrite($n, $s)
+			logWrite($n, " Automation test for CopTrax DVR box " & $boxID[$n])
+			logWrite($n, " Current user of the box : " & $boxUser)
+			logWrite($n, " The test case is : ")
+			logWrite($n, $commands[$n])
+			logWrite($n, $s)
+			logWrite($n, "(Client) " & $reply)	; write the returned results into the log file
+			If $clientVersion <> $latestVersion Then
+				pushCommand($n, "update C:\CopTraxTest\tmp\CopTraxTestClient.exe restart")
+				logWrite($n, "The current automation tester in the box is of version " & $clientVersion)
+				logWrite($n, "The latest automation tester in server is of version " & $latestVersion)
+				logWrite($n, "Updating the automation tester to the latest version. Test will restart.")
+			EndIf
 
-   EndSwitch
+	EndSwitch
 EndFunc
-
-Func getLastTime($file, $timeType)
-   Local $fileData = FileGetTime($file, $timeType, 1)	; get last create time in String format
-
-   ; convert 20171101121030 string time format to this time format 2017/11/01 12:10:30
-   Return StringMid ( $fileData, 1 , 4 ) & '/' & StringMid ( $fileData, 5 , 2 ) & '/' & StringMid ( $fileData, 7 , 2 ) & _
-    ' ' & StringMid ( $fileData, 9 , 2 ) & ':' & StringMid ( $fileData, 11 , 2 ) & ':' & StringMid ( $fileData, 13 , 2 )
-EndFunc   ;==>Example
 
 Func OnAutoItExit()
    TCPShutdown() ; Close the TCP service.
@@ -451,8 +434,19 @@ EndFunc
 
 Func HotKeyPressed()
    Switch @HotKeyPressed ; The last hotkey pressed.
-	  Case "{Esc}" ; KeyStroke is the {ESC} hotkey. to stop testing and quit
+	  Case "!{Esc}" ; KeyStroke is the {ESC} hotkey. to stop testing and quit
 	  $testEnd = True	;	Stop testing marker
 
     EndSwitch
  EndFunc   ;==>HotKeyPressed
+
+Func SocketToIP($iSocket)
+    Local $tSockAddr = 0, $aRet = 0
+    $tSockAddr = DllStructCreate("short;ushort;uint;char[8]")
+    $aRet = DllCall("Ws2_32.dll", "int", "getpeername", "int", $iSocket, "struct*", $tSockAddr, "int*", DllStructGetSize($tSockAddr))
+    If Not @error And $aRet[0] = 0 Then
+        $aRet = DllCall("Ws2_32.dll", "str", "inet_ntoa", "int", DllStructGetData($tSockAddr, 3))
+        If Not @error Then Return $aRet[0]
+    EndIf
+    Return 0
+EndFunc   ;==>SocketToIP
